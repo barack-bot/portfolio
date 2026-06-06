@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Barack — Security Researcher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Courier+Prime:wght@400;700&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#0d0d0d;font-family:'Courier Prime',monospace;overflow-x:hidden;}
+
+/* ── MATRIX CANVAS ── */
+#matrix-canvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;opacity:0.13;pointer-events:none;}
+
+/* ── SCANLINE ── */
+.scanline{position:fixed;top:0;left:0;width:100%;height:3px;background:rgba(0,255,65,0.18);z-index:9999;pointer-events:none;animation:scanline 5s linear infinite;}
+@keyframes scanline{0%{top:-3px;}100%{top:100vh;}}
+
+/* ── BOOT ── */
+#screen-boot{min-height:100vh;background:#0d0d0d;display:flex;flex-direction:column;padding:32px 40px;position:relative;z-index:1;}
+.boot-line{font-size:15px;color:#3a3a3a;line-height:2.2;opacity:0;transition:opacity 0.08s;}
+.boot-line.show{opacity:1;}
+.boot-progress{margin-top:auto;padding-top:24px;border-top:1px solid #141414;}
+.bp-label{color:#1a6b2e;font-size:13px;letter-spacing:2px;margin-bottom:8px;}
+.bp-track{height:2px;background:#111;}
+.bp-fill{height:2px;background:#00ff41;width:0%;transition:width 0.15s;}
+
+/* ── LOGO ── */
+#screen-logo{display:none;min-height:100vh;background:#0d0d0d;align-items:center;justify-content:center;flex-direction:column;position:relative;z-index:1;}
+.logo-ascii{font-family:'Orbitron',monospace;font-size:58px;color:#00ff41;letter-spacing:10px;opacity:0;display:block;text-align:center;}
+.logo-ascii.glitch{animation:glitch 0.07s infinite;}
+.logo-sub{color:#1a6b2e;font-size:14px;letter-spacing:6px;margin-top:22px;opacity:0;font-family:'Courier Prime',monospace;text-align:center;}
+.logo-bar-wrap{margin-top:36px;width:320px;height:3px;background:#111;opacity:0;}
+.logo-bar{height:3px;background:#00ff41;width:0%;}
+.logo-pct{color:#1a6b2e;font-size:13px;margin-top:12px;letter-spacing:3px;opacity:0;font-family:'Courier Prime',monospace;}
+@keyframes glitch{
+  0%  {text-shadow: 3px 0 #ff0040,-3px 0 #00ffff;transform:translate(0,0);filter:brightness(1);}
+  15% {text-shadow:-4px 0 #ff0040, 4px 0 #00ffff;transform:translate(-3px,1px);filter:brightness(1.6);}
+  30% {text-shadow: 4px 2px #ff0040,-2px -1px #00ffff;transform:translate(3px,-2px);filter:brightness(0.7);}
+  45% {text-shadow:-3px 0 #ff0040, 3px 0 #00ffff;transform:translate(2px,1px);}
+  60% {text-shadow: 2px -2px #ff0040,-4px 2px #00ffff;transform:translate(-2px,0);filter:brightness(1.3);}
+  75% {text-shadow:-2px 2px #ff0040, 2px -2px #00ffff;transform:translate(1px,-1px);filter:brightness(0.5);}
+  100%{text-shadow:0 0 #ff0040,0 0 #00ffff;transform:translate(0,0);filter:brightness(1);}
+}
+
+/* ── MAIN ── */
+#screen-main{display:none;min-height:100vh;flex-direction:column;position:relative;z-index:1;}
+
+.topbar{background:rgba(8,8,8,0.95);border-bottom:1px solid #141414;padding:10px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;}
+.topbar-left{display:flex;align-items:center;gap:14px;}
+.tb-dot{width:13px;height:13px;border-radius:50%;}
+.tb-title{color:#1e1e1e;font-size:14px;letter-spacing:2px;font-family:'Courier Prime',monospace;}
+.tb-time{color:#00ff41;font-size:14px;font-family:'Courier Prime',monospace;}
+
+.desktop{display:grid;grid-template-columns:215px 1fr;flex:1;min-height:calc(100vh - 46px);}
+
+.sidebar{background:#080808;border-right:1px solid #111;padding:24px 0;display:flex;flex-direction:column;position:sticky;top:46px;height:calc(100vh - 46px);}
+.nav-section{color:#191919;font-size:11px;letter-spacing:4px;padding:16px 20px 8px;font-family:'Courier Prime',monospace;}
+.nav-item{padding:13px 20px;font-size:15px;letter-spacing:2px;cursor:pointer;display:flex;align-items:center;gap:10px;color:#282828;border-left:2px solid transparent;transition:all 0.18s;font-family:'Courier Prime',monospace;}
+.nav-item:hover{color:#00ff41;background:#070f07;border-left-color:#1a3d1a;}
+.nav-item.active{color:#00ff41;border-left:2px solid #00ff41;background:#060e06;}
+.nav-badge{font-size:10px;margin-left:auto;padding:2px 7px;border:1px solid #00ff41;color:#00ff41;letter-spacing:1px;}
+.nav-badge.warn{border-color:#ffcc00;color:#ffcc00;}
+.sidebar-status{margin-top:auto;padding:20px;}
+.status-item{font-size:13px;color:#1a3d1a;line-height:2.5;font-family:'Courier Prime',monospace;}
+
+.content{background:transparent;padding:36px 40px;overflow-y:auto;}
+.panel{display:none;}
+.panel.active{display:block;}
+
+/* ── PANEL SLIDE-IN ── */
+@keyframes slideIn{
+  from{opacity:0;transform:translateY(18px);}
+  to{opacity:1;transform:translateY(0);}
+}
+.panel.active{animation:slideIn 0.35s ease forwards;}
+
+/* ── PROMPT ── */
+.prompt-line{display:flex;align-items:center;gap:10px;margin-bottom:28px;font-size:15px;font-family:'Courier Prime',monospace;}
+.prompt-user{color:#00ff41;}
+.prompt-path{color:#1a6b2e;}
+.prompt-sym{color:#333;}
+.prompt-cmd{color:#2a2a2a;}
+
+/* ── HOME ── */
+.hero-name{font-family:'Orbitron',monospace;font-size:42px;color:#00ff41;letter-spacing:4px;line-height:1.15;min-height:54px;}
+.hero-role{color:#1a6b2e;font-size:14px;letter-spacing:5px;margin-top:12px;font-family:'Courier Prime',monospace;}
+.hero-desc{color:#383838;font-size:15px;line-height:2.3;margin-top:24px;max-width:520px;font-family:'Courier Prime',monospace;}
+.hero-desc .hl{color:#00ff41;}
+.tags{margin-top:28px;}
+.tag{display:inline-block;border:1px solid #1a2e1a;color:#1a6b2e;font-size:12px;padding:5px 13px;margin:4px;letter-spacing:1px;font-family:'Courier Prime',monospace;transition:all 0.15s;}
+.tag:hover{border-color:#00ff41;color:#00ff41;}
+.tag.hot{border-color:#00ff41;color:#00ff41;}
+.cursor-blink{display:inline-block;width:10px;height:17px;background:#00ff41;vertical-align:-4px;animation:blink 1s step-end infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── PROJECTS ── */
+.section-label{color:#1a6b2e;font-size:12px;letter-spacing:4px;margin:28px 0 16px;font-family:'Courier Prime',monospace;}
+.cat-label{color:#00ff41;font-size:11px;letter-spacing:3px;padding:6px 14px;border:1px solid #1a3d1a;display:inline-block;margin-bottom:18px;font-family:'Courier Prime',monospace;}
+
+.proj-card{border:1px solid #111;background:#070707;padding:20px;margin:10px 0;transition:border-color 0.2s,transform 0.2s;}
+.proj-card:hover{border-color:#1a3d1a;transform:translateX(4px);}
+.proj-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+.proj-name{color:#00ff41;font-size:17px;font-family:'Courier Prime',monospace;font-weight:700;}
+.proj-right{text-align:right;flex-shrink:0;}
+.proj-bar-wrap{width:100px;height:2px;background:#111;margin-left:auto;margin-bottom:8px;}
+.proj-bar{height:2px;background:#00ff41;width:0%;transition:width 1s ease;}
+.proj-status{font-size:11px;padding:3px 10px;letter-spacing:1px;font-family:'Courier Prime',monospace;}
+.s-live{border:1px solid #00ff41;color:#00ff41;}
+.s-build{border:1px solid #ffcc00;color:#ffcc00;}
+.proj-desc{color:#2e2e2e;font-size:14px;line-height:1.9;margin-top:10px;font-family:'Courier Prime',monospace;}
+.proj-stack{color:#1a3d1a;font-size:13px;margin-top:8px;font-family:'Courier Prime',monospace;}
+
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:28px;}
+.stat-box{border:1px solid #111;padding:18px;text-align:center;background:#070707;transition:border-color 0.2s;}
+.stat-box:hover{border-color:#1a3d1a;}
+.stat-num{color:#00ff41;font-size:30px;display:block;margin-bottom:6px;font-family:'Orbitron',monospace;}
+.stat-lbl{color:#1a3d1a;font-size:11px;letter-spacing:2px;font-family:'Courier Prime',monospace;}
+
+/* ── SKILLS ── */
+.skill-row{display:flex;align-items:center;gap:16px;margin:13px 0;}
+.skill-name{color:#444;font-size:14px;width:190px;font-family:'Courier Prime',monospace;}
+.skill-track{flex:1;height:2px;background:#111;}
+.skill-fill{height:2px;background:#00ff41;width:0%;transition:width 1.2s ease;}
+.skill-pct{color:#1a3d1a;font-size:13px;width:42px;text-align:right;font-family:'Courier Prime',monospace;}
+
+/* ── BLOG ── */
+.blog-card{border:1px solid #111;background:#070707;padding:20px;margin:12px 0;cursor:pointer;transition:border-color 0.2s,transform 0.2s;}
+.blog-card:hover{border-color:#1a3d1a;transform:translateX(4px);}
+.blog-tag{display:inline-block;border:1px solid #1a2e1a;color:#1a6b2e;font-size:11px;padding:2px 9px;margin-right:6px;letter-spacing:1px;font-family:'Courier Prime',monospace;}
+.blog-tag.sec{border-color:#00ff41;color:#00ff41;}
+.blog-title{color:#00ff41;font-size:16px;font-family:'Courier Prime',monospace;font-weight:700;margin:10px 0 6px;}
+.blog-meta{color:#1a3d1a;font-size:13px;font-family:'Courier Prime',monospace;margin-bottom:10px;}
+.blog-excerpt{color:#2e2e2e;font-size:14px;line-height:2;font-family:'Courier Prime',monospace;}
+.blog-coming{border:1px dashed #141414;padding:36px;text-align:center;margin-top:20px;}
+.blog-coming-label{color:#1a3d1a;font-size:12px;letter-spacing:3px;margin-bottom:12px;font-family:'Courier Prime',monospace;}
+.blog-coming-sub{color:#1a1a1a;font-size:14px;font-family:'Courier Prime',monospace;line-height:2.4;}
+
+/* ── CONTACT ── */
+.contact-line{display:flex;align-items:center;gap:16px;padding:15px 0;border-bottom:1px solid #0f0f0f;}
+.contact-line:last-child{border-bottom:none;}
+.c-label{color:#1a6b2e;width:90px;font-size:13px;letter-spacing:1px;font-family:'Courier Prime',monospace;}
+.c-val{color:#00ff41;font-family:'Courier Prime',monospace;font-size:15px;}
+.c-link{color:#00ff41;font-family:'Courier Prime',monospace;font-size:15px;text-decoration:none;border-bottom:1px solid transparent;transition:border-color 0.15s;}
+.c-link:hover{border-bottom-color:#00ff41;}
+
+.contact-btn{display:flex;align-items:center;gap:12px;border:1px solid #1a3d1a;padding:16px 20px;margin:10px 0;text-decoration:none;transition:all 0.2s;background:#070707;}
+.contact-btn:hover{border-color:#00ff41;transform:translateX(4px);}
+.contact-btn-icon{font-size:20px;color:#00ff41;}
+.contact-btn-text{font-family:'Courier Prime',monospace;}
+.contact-btn-label{color:#1a6b2e;font-size:12px;letter-spacing:2px;display:block;}
+.contact-btn-val{color:#00ff41;font-size:15px;display:block;margin-top:2px;}
+
+.msg-box{margin-top:32px;border:1px solid #111;padding:26px;background:#070707;}
+.msg-label{color:#1a6b2e;font-size:12px;letter-spacing:3px;margin-bottom:18px;font-family:'Courier Prime',monospace;}
+.msg-input{width:100%;background:#0d0d0d;border:none;border-bottom:1px solid #1a3d1a;color:#00ff41;font-family:'Courier Prime',monospace;font-size:15px;padding:12px 0;outline:none;display:block;margin-bottom:20px;transition:border-color 0.2s;}
+.msg-input:focus{border-bottom-color:#00ff41;}
+.msg-input::placeholder{color:#1a2e1a;}
+.msg-btn{background:transparent;border:1px solid #00ff41;color:#00ff41;font-family:'Courier Prime',monospace;font-size:14px;padding:13px 20px;cursor:pointer;letter-spacing:2px;width:100%;transition:background 0.15s;}
+.msg-btn:hover{background:#060e06;}
+</style>
+</head>
+<body>
+
+<canvas id="matrix-canvas"></canvas>
+<div class="scanline"></div>
+
+<!-- BOOT -->
+<div id="screen-boot">
+  <div id="boot-lines"></div>
+  <div class="boot-progress">
+    <div class="bp-label" id="bp-label">INITIALIZING...</div>
+    <div class="bp-track"><div class="bp-fill" id="bp-fill"></div></div>
+  </div>
+</div>
+
+<!-- LOGO -->
+<div id="screen-logo">
+  <span class="logo-ascii" id="logo-ascii">BARACK</span>
+  <div class="logo-sub" id="logo-sub">// SECURITY RESEARCHER · BUILDER · KENYA</div>
+  <div class="logo-bar-wrap" id="logo-bar-wrap">
+    <div class="logo-bar" id="logo-bar"></div>
+  </div>
+  <div class="logo-pct" id="logo-pct">LOADING 0%</div>
+</div>
+
+<!-- MAIN -->
+<div id="screen-main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="tb-dot" style="background:#ff5f57"></div>
+      <div class="tb-dot" style="background:#febc2e"></div>
+      <div class="tb-dot" style="background:#28c840"></div>
+      <div class="tb-title" style="margin-left:10px">BARACK@KE-SCAN — PORTFOLIO v1.0</div>
+    </div>
+    <span class="tb-time" id="clock"></span>
+  </div>
+
+  <div class="desktop">
+    <div class="sidebar">
+      <div class="nav-section">// NAVIGATE</div>
+      <div class="nav-item active" onclick="showPanel('home',this)"><span>~</span> HOME</div>
+      <div class="nav-item" onclick="showPanel('projects',this)"><span>/</span> PROJECTS</div>
+      <div class="nav-item" onclick="showPanel('skills',this)"><span>$</span> SKILLS</div>
+      <div class="nav-item" onclick="showPanel('blog',this)"><span>#</span> BLOG <span class="nav-badge">NEW</span></div>
+      <div class="nav-item" onclick="showPanel('contact',this)"><span>@</span> CONTACT</div>
+
+      <div class="sidebar-status">
+        <div class="nav-section" style="padding-left:0;padding-top:0">// STATUS</div>
+        <div class="status-item">
+          <div><span style="color:#00ff41">▶</span> Y2 SEM1 ACTIVE</div>
+          <div><span style="color:#00ff41">▶</span> KISII, KENYA</div>
+          <div><span style="color:#ffcc00">▶</span> SPRINT 5 LIVE</div>
+          <div><span style="color:#00ff41">▶</span> OPEN TO COLLAB</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- HOME -->
+      <div class="panel active" id="panel-home">
+        <div class="prompt-line">
+          <span class="prompt-user">barack</span>
+          <span class="prompt-path">~/portfolio</span>
+          <span class="prompt-sym">$</span>
+          <span class="prompt-cmd">cat about.txt</span>
+        </div>
+        <div class="hero-name" id="typed-name"></div>
+        <div class="hero-role" id="typed-role" style="opacity:0">// SECURITY RESEARCHER & SYSTEMS BUILDER</div>
+        <div class="hero-desc" id="typed-desc" style="opacity:0">
+          Year 2 Computer Engineering at <span class="hl">Kisii University</span>.<br>
+          Building <span class="hl">KE-Scan</span> — a multi-tenant SaaS security<br>
+          scanner for Kenyan ODPC compliance.<br><br>
+          Long-term mission: world-class security researcher<br>
+          and founder of an <span class="hl">African AI & cloud</span> company.
+        </div>
+        <div class="tags" id="typed-tags" style="opacity:0">
+          <span class="tag hot">Go</span>
+          <span class="tag hot">PostgreSQL</span>
+          <span class="tag hot">TCP/IP</span>
+          <span class="tag hot">TLS</span>
+          <span class="tag">Node.js</span>
+          <span class="tag">Python</span>
+          <span class="tag">Linux</span>
+          <span class="tag">M-Pesa API</span>
+          <span class="tag">Docker</span>
+        </div>
+        <div id="typed-cursor" style="margin-top:32px;opacity:0;font-size:15px;font-family:'Courier Prime',monospace;">
+          <span style="color:#1a6b2e">barack~/portfolio $ </span><span class="cursor-blink"></span>
+        </div>
+      </div>
+
+      <!-- PROJECTS -->
+      <div class="panel" id="panel-projects">
+        <div class="prompt-line">
+          <span class="prompt-user">barack</span>
+          <span class="prompt-path">~/projects</span>
+          <span class="prompt-sym">$</span>
+          <span class="prompt-cmd">ls -la --category</span>
+        </div>
+
+        <div class="cat-label">// CYBERSECURITY</div>
+
+        <div class="proj-card">
+          <div class="proj-header">
+            <div class="proj-name">KE-SCAN</div>
+            <div class="proj-right">
+              <div class="proj-bar-wrap"><div class="proj-bar" data-width="72"></div></div>
+              <span class="proj-status s-live">SPRINT 5</span>
+            </div>
+          </div>
+          <div class="proj-desc">Multi-tenant SaaS security scanner for Kenyan businesses targeting ODPC/Data Protection Act compliance. CVE precondition architecture — detects risk without exploiting anything.</div>
+          <div class="proj-stack">Go · PostgreSQL · Cloudflare R2 · Daraja STK Push · Render</div>
+        </div>
+
+        <div class="proj-card">
+          <div class="proj-header">
+            <div class="proj-name">NETSCOPE</div>
+            <div class="proj-right">
+              <div class="proj-bar-wrap"><div class="proj-bar" data-width="55"></div></div>
+              <span class="proj-status s-build">BUILDING</span>
+            </div>
+          </div>
+          <div class="proj-desc">Wire-level PCAP analyzer. Instruments a Go app to capture raw packets and maps the gap between developer abstraction and machine reality — what HTTP actually looks like on the wire.</div>
+          <div class="proj-stack">Python · Scapy · PCAP · Go</div>
+        </div>
+
+        <div class="section-label" style="margin-top:36px">// OTHER PROJECTS</div>
+
+        <div class="proj-card">
+          <div class="proj-header">
+            <div class="proj-name">IRANDA</div>
+            <div class="proj-right">
+              <div class="proj-bar-wrap"><div class="proj-bar" data-width="100"></div></div>
+              <span class="proj-status s-live">DEPLOYED</span>
+            </div>
+          </div>
+          <div class="proj-desc">School management system for a Kenyan primary school. CBC grading, class rankings via SQL window functions, parent management and SMS notifications.</div>
+          <div class="proj-stack">Node.js · Express · PostgreSQL · Africa's Talking</div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat-box"><span class="stat-num">4</span><span class="stat-lbl">SPRINTS DONE</span></div>
+          <div class="stat-box"><span class="stat-num">18</span><span class="stat-lbl">API ENDPOINTS</span></div>
+          <div class="stat-box"><span class="stat-num">8</span><span class="stat-lbl">DB TABLES</span></div>
+        </div>
+      </div>
+
+      <!-- SKILLS -->
+      <div class="panel" id="panel-skills">
+        <div class="prompt-line">
+          <span class="prompt-user">barack</span>
+          <span class="prompt-path">~/skills</span>
+          <span class="prompt-sym">$</span>
+          <span class="prompt-cmd">cat skills.json | jq</span>
+        </div>
+
+        <div class="section-label">// BACKEND & SYSTEMS</div>
+        <div class="skill-row"><span class="skill-name">Go</span><div class="skill-track"><div class="skill-fill" data-width="75"></div></div><span class="skill-pct">75%</span></div>
+        <div class="skill-row"><span class="skill-name">Node.js / Express</span><div class="skill-track"><div class="skill-fill" data-width="80"></div></div><span class="skill-pct">80%</span></div>
+        <div class="skill-row"><span class="skill-name">PostgreSQL</span><div class="skill-track"><div class="skill-fill" data-width="72"></div></div><span class="skill-pct">72%</span></div>
+        <div class="skill-row"><span class="skill-name">Python</span><div class="skill-track"><div class="skill-fill" data-width="68"></div></div><span class="skill-pct">68%</span></div>
+
+        <div class="section-label">// NETWORKING & SECURITY</div>
+        <div class="skill-row"><span class="skill-name">TCP/IP · TLS</span><div class="skill-track"><div class="skill-fill" data-width="82"></div></div><span class="skill-pct">82%</span></div>
+        <div class="skill-row"><span class="skill-name">Linux internals</span><div class="skill-track"><div class="skill-fill" data-width="78"></div></div><span class="skill-pct">78%</span></div>
+        <div class="skill-row"><span class="skill-name">CVE analysis</span><div class="skill-track"><div class="skill-fill" data-width="62"></div></div><span class="skill-pct">62%</span></div>
+        <div class="skill-row"><span class="skill-name">Exploit dev</span><div class="skill-track"><div class="skill-fill" data-width="45"></div></div><span class="skill-pct">45%</span></div>
+
+        <div class="section-label">// LEARNING NOW</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+          <span class="tag hot">React / Tailwind</span>
+          <span class="tag hot">Docker</span>
+          <span class="tag">Memory exploitation</span>
+          <span class="tag">Reverse engineering</span>
+          <span class="tag">Cloud infra</span>
+        </div>
+      </div>
+
+      <!-- BLOG -->
+      <div class="panel" id="panel-blog">
+        <div class="prompt-line">
+          <span class="prompt-user">barack</span>
+          <span class="prompt-path">~/blog</span>
+          <span class="prompt-sym">$</span>
+          <span class="prompt-cmd">ls -lt posts/</span>
+        </div>
+
+        <div class="section-label">// LATEST POSTS</div>
+
+        <div class="blog-card">
+          <div><span class="blog-tag sec">SECURITY</span><span class="blog-tag">GO</span></div>
+          <div class="blog-title">Building KE-Scan: CVE precondition architecture explained</div>
+          <div class="blog-meta">2025-06-06 · 8 min read</div>
+          <div class="blog-excerpt">How I modeled each CVE as a struct with preconditions that map to real target facts — so the scanner detects risk without exploiting anything.</div>
+        </div>
+
+        <div class="blog-card">
+          <div><span class="blog-tag sec">NETWORKING</span></div>
+          <div class="blog-title">What HTTP actually looks like on the wire</div>
+          <div class="blog-meta">2025-05-28 · 6 min read</div>
+          <div class="blog-excerpt">I instrumented a Go app to capture raw packets using NetScope and mapped the gap between what developers write and what machines actually send.</div>
+        </div>
+
+        <div class="blog-card">
+          <div><span class="blog-tag">M-PESA</span><span class="blog-tag sec">SECURITY</span></div>
+          <div class="blog-title">Assumption mapping: how I approach Daraja API security research</div>
+          <div class="blog-meta">2025-05-10 · 5 min read</div>
+          <div class="blog-excerpt">The core offensive security framework I use — finding where developer assumptions about the API can be violated at the boundary.</div>
+        </div>
+
+        <div class="blog-coming">
+          <div class="blog-coming-label">// MORE POSTS INCOMING</div>
+          <div class="blog-coming-sub">
+            TCP three-way handshake deep dive<br>
+            TLS cert inspection in Go from scratch<br>
+            SYN floods and SYN cookies explained<br>
+            Subnetting without memorizing rules
+          </div>
+        </div>
+      </div>
+
+      <!-- CONTACT -->
+      <div class="panel" id="panel-contact">
+        <div class="prompt-line">
+          <span class="prompt-user">barack</span>
+          <span class="prompt-path">~/contact</span>
+          <span class="prompt-sym">$</span>
+          <span class="prompt-cmd">cat contact.txt</span>
+        </div>
+
+        <div class="section-label">// DIRECT LINKS</div>
+
+        <a class="contact-btn" href="https://github.com/barack-bot" target="_blank" rel="noopener">
+          <svg class="contact-btn-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00ff41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
+          </svg>
+          <div class="contact-btn-text">
+            <span class="contact-btn-label">GITHUB</span>
+            <span class="contact-btn-val">github.com/barack-bot</span>
+          </div>
+        </a>
+
+        <a class="contact-btn" href="mailto:your@email.com">
+          <svg class="contact-btn-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00ff41" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+          <div class="contact-btn-text">
+            <span class="contact-btn-label">EMAIL</span>
+            <span class="contact-btn-val">your@email.com</span>
+          </div>
+        </a>
+
+        <div class="section-label" style="margin-top:32px">// OTHER INFO</div>
+        <div class="contact-line"><span class="c-label">LOCATION</span><span class="c-val">Kisii, Kenya</span></div>
+        <div class="contact-line"><span class="c-label">OPEN TO</span><span class="c-val">Internships · Bug bounty collab · Research</span></div>
+        <div class="contact-line"><span class="c-label">MISSION</span><span class="c-val">African AI & Cloud Infrastructure</span></div>
+
+        <div class="msg-box">
+          <div class="msg-label">// SEND A MESSAGE</div>
+          <input type="text" class="msg-input" id="msg-name" placeholder="your name...">
+          <input type="text" class="msg-input" id="msg-input" placeholder="your message...">
+          <button class="msg-btn" onclick="handleMsg()">TRANSMIT MESSAGE →</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ── MATRIX RAIN ──
+const canvas = document.getElementById('matrix-canvas');
+const ctx = canvas.getContext('2d');
+let cols, drops;
+function initMatrix(){
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  cols = Math.floor(canvas.width / 18);
+  drops = Array(cols).fill(1);
+}
+function drawMatrix(){
+  ctx.fillStyle = 'rgba(13,13,13,0.05)';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#00ff41';
+  ctx.font = '14px Courier Prime, monospace';
+  const chars = '01アイウエオカキクケコ<>{}[]$#@!%^&*ABCDEF';
+  for(let i=0;i<drops.length;i++){
+    const c = chars[Math.floor(Math.random()*chars.length)];
+    ctx.fillText(c, i*18, drops[i]*18);
+    if(drops[i]*18 > canvas.height && Math.random() > 0.975) drops[i]=0;
+    drops[i]++;
+  }
+}
+initMatrix();
+window.addEventListener('resize', initMatrix);
+setInterval(drawMatrix, 45);
+
+// ── BOOT ──
+const bootMessages = [
+  ['BIOS v2.1 — Barack OS initializing...','ok'],
+  ['Loading kernel: security-research-6.1.0-ke','ok'],
+  ['Mounting /dev/projects → /home/barack/','ok'],
+  ['Starting postgresql@15...','ok'],
+  ['Starting ke-scan-api :8080...','ok'],
+  ['Starting ke-scan-scanner :9090...','ok'],
+  ['Loading module: tls_inspector.ko','ok'],
+  ['Loading module: cve_registry.ko','ok'],
+  ['Loading module: dns_checker.ko','ok'],
+  ['Loading module: header_audit.ko','ok'],
+  ["Africa's Talking API — connected",'ok'],
+  ['Daraja STK Push — connected','ok'],
+  ['M-Pesa research module — active','warn'],
+  ['NetScope packet analyzer — ready','ok'],
+  ['Blog engine — mounted','ok'],
+  ['All systems nominal. Launching portfolio...','ok'],
+];
+
+const bootEl = document.getElementById('boot-lines');
+const bpFill = document.getElementById('bp-fill');
+const bpLabel = document.getElementById('bp-label');
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+async function runBoot(){
+  for(let i=0;i<bootMessages.length;i++){
+    const [msg,status] = bootMessages[i];
+    const div = document.createElement('div');
+    div.className = 'boot-line';
+    const pct = Math.round(((i+1)/bootMessages.length)*100);
+    const col = status==='ok'?'#00ff41':'#ffcc00';
+    const sym = status==='ok'?'[  OK  ]':'[ WARN ]';
+    div.innerHTML = `<span style="color:#1a3d1a">[${String(i+1).padStart(2,'0')}/${bootMessages.length}]</span> ${msg} <span style="color:${col}">${sym}</span>`;
+    bootEl.appendChild(div);
+    await sleep(20);
+    div.classList.add('show');
+    bpFill.style.width = pct+'%';
+    bpLabel.textContent = 'INITIALIZING... '+pct+'%';
+    await sleep(150);
+  }
+  await sleep(400);
+  showLogoScreen();
+}
+
+async function showLogoScreen(){
+  document.getElementById('screen-boot').style.display='none';
+  const ls = document.getElementById('screen-logo');
+  ls.style.display='flex';
+  const logo = document.getElementById('logo-ascii');
+  await sleep(200);
+  logo.style.transition='opacity 0.4s';
+  logo.style.opacity='1';
+  await sleep(500);
+
+  // glitch burst
+  let gc=0;
+  const gi = setInterval(()=>{
+    logo.classList.toggle('glitch');
+    gc++;
+    if(gc>18){clearInterval(gi);logo.classList.remove('glitch');logo.style.textShadow='none';}
+  },70);
+
+  await sleep(1600);
+  const sub = document.getElementById('logo-sub');
+  sub.style.transition='opacity 0.6s';
+  sub.style.opacity='1';
+  await sleep(600);
+
+  const barWrap = document.getElementById('logo-bar-wrap');
+  const bar = document.getElementById('logo-bar');
+  const pctEl = document.getElementById('logo-pct');
+  barWrap.style.transition='opacity 0.3s';
+  barWrap.style.opacity='1';
+  pctEl.style.transition='opacity 0.3s';
+  pctEl.style.opacity='1';
+
+  let p=0;
+  const iv = setInterval(()=>{
+    p++;
+    bar.style.width=p+'%';
+    pctEl.textContent='LOADING '+p+'%';
+    if(p>=100){clearInterval(iv);setTimeout(showMain,500);}
+  },14);
+}
+
+function showMain(){
+  document.getElementById('screen-logo').style.display='none';
+  const ms = document.getElementById('screen-main');
+  ms.style.display='flex';
+  startClock();
+  typeHero();
+}
+
+function startClock(){
+  function tick(){
+    const now = new Date();
+    document.getElementById('clock').textContent =
+      now.toLocaleTimeString('en-GB',{hour12:false})+' EAT';
+  }
+  tick();
+  setInterval(tick,1000);
+}
+
+async function typeHero(){
+  const name='BARACK';
+  const el=document.getElementById('typed-name');
+  for(let i=0;i<name.length;i++){
+    el.textContent=name.slice(0,i+1);
+    await sleep(110);
+  }
+  await sleep(200);
+  fade('typed-role');
+  await sleep(350);
+  fade('typed-desc');
+  await sleep(350);
+  fade('typed-tags');
+  await sleep(250);
+  fade('typed-cursor');
+}
+
+function fade(id){
+  const el=document.getElementById(id);
+  el.style.transition='opacity 0.5s';
+  el.style.opacity='1';
+}
+
+// ── PANEL SWITCH ──
+function showPanel(name,el){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  el.classList.add('active');
+
+  // animate bars when panels open
+  setTimeout(()=>{
+    document.querySelectorAll('#panel-'+name+' .proj-bar[data-width]').forEach(b=>{
+      b.style.width=b.dataset.width+'%';
+    });
+    document.querySelectorAll('#panel-'+name+' .skill-fill[data-width]').forEach(b=>{
+      b.style.width=b.dataset.width+'%';
+    });
+  },50);
+}
+
+// trigger bars on home load too
+setTimeout(()=>{
+  document.querySelectorAll('.proj-bar[data-width]').forEach(b=>b.style.width=b.dataset.width+'%');
+  document.querySelectorAll('.skill-fill[data-width]').forEach(b=>b.style.width=b.dataset.width+'%');
+},3000);
+
+function handleMsg(){
+  const name=document.getElementById('msg-name').value.trim();
+  const msg=document.getElementById('msg-input').value.trim();
+  if(!msg)return;
+  window.location.href='mailto:your@email.com?subject=Portfolio contact from '+encodeURIComponent(name)+'&body='+encodeURIComponent(msg);
+}
+
+runBoot();
+</script>
+</body>
+</html>
+
+
+
+
+
